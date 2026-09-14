@@ -31,6 +31,7 @@ Things to know:
 | Path | Content |
 |---|---|
 | `cmd/server/` | container entrypoint: config from env, opens the DB, serves the core handler on `LISTEN_ADDR`. `server migrate` applies `migrations/` |
+| `internal/app/` | configuration from the environment and wiring, shared by `cmd/server` and the adapters |
 | `internal/handler/` | the core: builds one `http.Handler` with every route (Go 1.22 `ServeMux` method and path patterns). Knows nothing about providers |
 | `internal/rules/` | blocked IPs, geo rules, whitelist with expiry, auto-block counting |
 | `internal/auth/` | bearer token checks (server tokens, admin token) |
@@ -52,14 +53,16 @@ Environment variables only. In the container they come from `.env` (compose) or 
 |---|---|---|
 | `DATABASE_URL` | PostgreSQL connection string, any PostgreSQL 14+ | required |
 | `ADMIN_TOKEN` | bearer token accepted from the phones | required |
-| `FCM_PROJECT_ID` | Firebase project id | required |
-| `FCM_SERVICE_ACCOUNT_JSON` | Firebase service account key, used to mint FCM access tokens | required |
+| `FCM_PROJECT_ID` | Firebase project id | required (see note) |
+| `FCM_SERVICE_ACCOUNT_JSON` | Firebase service account key, used to mint FCM access tokens | required (see note) |
 | `LISTEN_ADDR` | container only, address to serve on | `:8080` |
 | `VERDICT_WAIT_SECONDS` | long-poll cap | `25` |
 | `AUTOBLOCK_THRESHOLD` | denials from one IP that trigger a block | `3` |
 | `AUTOBLOCK_WINDOW_SECONDS` | window for counting those denials | `3600` |
 | `AUTOBLOCK_DURATION_SECONDS` | how long a block lasts, `0` = until unblocked from the app | `0` |
 | `GEO_LOOKUP_URL` | geolocation lookup endpoint; empty disables geo, and geo rules then never match | empty |
+
+Note on FCM: `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_JSON` may both be empty for local smoke tests. Push is then disabled: requests are stored and answered, but no phone is notified, and the log says so at start. One of the two without the other is a configuration error.
 
 ## Build
 
@@ -74,6 +77,16 @@ docker build -t ssh-sentinel-backend .
 ```
 
 The Scaleway zip is built by Terraform (`infra/scaleway/`) from `adapters/scaleway/api` with `GOOS=linux GOARCH=amd64 CGO_ENABLED=0`. You do not build it by hand.
+
+The binary has five subcommands (`server <command>`, `serve` when none is given):
+
+| Command | Does | Needs |
+|---|---|---|
+| `serve` | applies the pending migrations, then serves the API on `LISTEN_ADDR` until SIGINT or SIGTERM, with a 30 s drain | every variable above |
+| `migrate` | applies the pending migrations and exits; the Scaleway deploy runs it as a step | `DATABASE_URL` |
+| `enroll --name <server name> [--os linux\|windows\|darwin]` | registers a server: stores the hash of a new token, prints the plain token once on stdout (everything else goes to stderr, so `$token = .\bin\server.exe enroll --name web-01` captures it). Exit 1 if the name exists | `DATABASE_URL` |
+| `healthcheck` | `GET /healthz` on the local port; exit 0 on `200`. The container `HEALTHCHECK` uses it because the runtime image has no shell or curl | `LISTEN_ADDR` |
+| `version` | prints the version set with `-ldflags "-X main.version=..."`, `dev` otherwise | nothing |
 
 ## Run locally
 
@@ -103,4 +116,4 @@ docker stop ssh-sentinel-pg
 
   Tests that need the database skip themselves when `TEST_DATABASE_URL` is unset. Run them against PostgreSQL 14 as well before a release: 14 is the floor the contract promises.
 
-- Smoke test after a deployment: call the routes with `curl` (or `Invoke-RestMethod`) using a dev server token and the dev admin token. Payloads are in `docs/architecture.md`, section 5.
+- Smoke test, locally or after a deployment: `TESTING.md` walks every route with `curl`, simulating the agent with a server token and the phone with the admin token. Payloads are in `docs/architecture.md`, section 5.
