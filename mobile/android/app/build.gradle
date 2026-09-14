@@ -1,0 +1,58 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// Firebase configuration. google-services.json is gitignored because it holds the
+// Firebase project ids. Without it the app builds and runs, but receives no push.
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+} else {
+    logger.warn("ssh-sentinel: android/app/google-services.json not found, this build will not receive push notifications. See mobile/TESTING.md.")
+}
+
+android {
+    namespace = "com.example.ssh_sentinel"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        // flutter_local_notifications needs library desugaring.
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        // Must match the package name of the Android app registered in the Firebase project.
+        applicationId = "com.example.ssh_sentinel"
+        // 23 is the minimum for flutter_secure_storage and the Firebase SDK.
+        minSdk = 23
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            // Signed with the debug keys so `flutter run --release` works out of the box.
+            // For an APK handed to the admins, add a signing config backed by
+            // android/key.properties (gitignored).
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
+}
