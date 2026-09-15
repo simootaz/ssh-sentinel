@@ -659,9 +659,9 @@ Rules:
 - The server identity always comes from the token. The payload's `hostname` is informational.
 - `device_id` is attribution, not authentication: the admin token is what authorizes a verdict. Per-admin tokens are out of scope; the device label is what history shows.
 - Server enrollment: a script generates the token, inserts the hash and name into `servers`, prints the plain token once. The installer writes it into the agent config. No endpoint.
-- Rotation is manual: enroll again, replace the config; change the admin secret and redeploy. Rotation endpoints are out of scope.
+- Rotation is manual: replace the server's `token_hash` in the database with the hash of a new token, then replace the config; change the admin secret and redeploy. Rotation endpoints are out of scope.
 - Transport is HTTPS only. On Scaleway the function URL is TLS-terminated by the platform; with compose, Caddy or the operator's proxy terminates TLS in front of the container, which speaks plain HTTP on its internal network only. The agent trusts the OS certificate store; minimal images need the `ca-certificates` package.
-- A stolen server token allows creating requests for that server (push noise) and reading that server's whitelist. It cannot approve anything. The admin notices the noise and revokes the server by deleting its row.
+- A stolen server token allows creating requests for that server (push noise) and reading that server's whitelist. It cannot approve anything. The admin notices the noise and revokes the server by replacing its `token_hash` with a random value: the agent then gets 401, which is a final deny (section 3.1, row 5), and the cache does not override it. The row is not deleted, `requests` references it.
 - A stolen admin token allows approving anything, unblocking IPs and removing rules. Hence encrypted storage on the phones, and revocation by changing the secret and redeploying.
 - The break-glass file is root-only, never synced, never leaves the server. It is the escape hatch for a backend outage. Keep it to one or two accounts and review it.
 - Secrets never go in git: `.gitignore` covers `.env*`, key material, `*.tfvars`, `google-services.json` and service account files.
@@ -703,7 +703,7 @@ Row 16 is the one that bites: the break-glass file only helps while the binary r
 
 Accepted on 2026-09-14, review of the scaffolding:
 
-1. PAM phase is `account`, line added after the distro's existing `account` lines in `/etc/pam.d/sshd` and `/etc/pam.d/sudo`. sshd skips the PAM `auth` stack for public-key logins but runs `account` for every login method once the credentials are valid, so the admins are only asked about logins that would otherwise succeed. `required` means a non-zero exit fails the login.
+1. PAM phase is `account`, line added before the distro's first `account` include in `/etc/pam.d/sshd` and `/etc/pam.d/sudo` (`@include common-account` on Debian and Ubuntu, `account include password-auth` or `system-auth` on the RHEL family). Before, not after: on the RHEL family the included file contains `account sufficient pam_localuser.so`, which ends the stack for local users, so a line placed after the include would be silently skipped. `install.sh` does it this way. sshd skips the PAM `auth` stack for public-key logins but runs `account` for every login method once the credentials are valid, so the admins are only asked about logins that would otherwise succeed. `required` means a non-zero exit fails the login.
 2. `POST /devices` is in the contract.
 3. Server enrollment is a script, no endpoint.
 4. macOS is best effort, later. Apple does not ship `pam_exec`; FreeBSD has one for OpenPAM, which macOS uses, so a port is the likely route. Nothing blocks on it.

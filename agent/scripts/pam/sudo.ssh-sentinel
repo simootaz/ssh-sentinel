@@ -1,0 +1,11 @@
+# Reference copy of the line install.sh inserts into /etc/pam.d/sudo.
+#
+# Same rule as for sshd: "account" phase, before the first include of the account stack
+# ("@include common-account" on Debian and Ubuntu, "account include system-auth" on the RHEL
+# family). --context=sudo tells the agent to report a sudo request; PAM gives sudo no remote
+# host, so the source IP is sent as null and the command is read from the sudo process.
+#
+# install.sh backs the file up to /etc/pam.d/sudo.ssh-sentinel.bak before editing it.
+
+# ssh-sentinel (managed by install.sh)
+account required pam_exec.so quiet /usr/local/bin/ssh-sentinel check --context=sudo

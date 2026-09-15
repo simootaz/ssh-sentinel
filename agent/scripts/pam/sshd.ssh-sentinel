@@ -1,0 +1,12 @@
+# Reference copy of the line install.sh inserts into /etc/pam.d/sshd.
+#
+# It goes in the "account" phase, BEFORE the first line that includes another file into the
+# account stack ("@include common-account" on Debian and Ubuntu, "account include
+# password-auth" on the RHEL family). The RHEL include contains "account sufficient
+# pam_localuser.so": a sufficient module that succeeds ends the stack, so a line placed after
+# the include would be skipped for local users. "required" means a non-zero exit denies.
+#
+# install.sh backs the file up to /etc/pam.d/sshd.ssh-sentinel.bak before editing it.
+
+# ssh-sentinel (managed by install.sh)
+account required pam_exec.so quiet /usr/local/bin/ssh-sentinel check

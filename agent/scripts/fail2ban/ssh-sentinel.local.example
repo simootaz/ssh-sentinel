@@ -1,0 +1,25 @@
+# fail2ban jail for ssh-sentinel. Inactive while the file ends in .example.
+#
+# Enable it:
+#   cp /etc/fail2ban/jail.d/ssh-sentinel.local.example /etc/fail2ban/jail.d/ssh-sentinel.local
+#   systemctl reload fail2ban
+#   fail2ban-client status ssh-sentinel
+#
+# This bans an address on this server only, after three denied requests in one hour.
+# The backend's auto-block does the same across the whole fleet and needs no fail2ban.
+
+[ssh-sentinel]
+enabled  = true
+filter   = ssh-sentinel
+port     = ssh
+maxretry = 3
+findtime = 1h
+bantime  = 1h
+
+# journald hosts (Ubuntu, Debian, RHEL family): read the journal directly.
+backend  = systemd
+
+# Hosts without journald: comment "backend = systemd" and use the log file instead.
+# backend = auto
+# logpath = /var/log/auth.log
+#           /var/log/secure
