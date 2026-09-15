@@ -1,0 +1,5 @@
+# Real state backend settings, one copy per operator machine. backend.hcl.example is committed.
+backend.hcl
+
+# Function zip written by terraform plan
+build/
