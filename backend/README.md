@@ -64,6 +64,8 @@ Environment variables only. In the container they come from `.env` (compose) or 
 
 Note on FCM: `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_JSON` may both be empty for local smoke tests. Push is then disabled: requests are stored and answered, but no phone is notified, and the log says so at start. One of the two without the other is a configuration error.
 
+On Scaleway the function gets `FCM_SERVICE_ACCOUNT_SECRET_ID` instead of `FCM_SERVICE_ACCOUNT_JSON`, because the provider caps an environment value at 1000 characters. When the JSON variable is empty and the secret id is set, the adapter reads the key once at start from Secret Manager with the function's `SCW_SECRET_KEY` and `SCW_DEFAULT_REGION`, then boots as if `FCM_SERVICE_ACCOUNT_JSON` had been set (`infra/README.md`, "What the function receives"). The container never does this.
+
 ## Build
 
 Go 1.22 or newer. From `backend\` (PowerShell):
@@ -76,7 +78,7 @@ go build -o bin\server.exe .\cmd\server
 docker build -t ssh-sentinel-backend .
 ```
 
-The Scaleway zip is built by Terraform (`infra/scaleway/`) from `adapters/scaleway/api` with `GOOS=linux GOARCH=amd64 CGO_ENABLED=0`. You do not build it by hand.
+The Scaleway zip is built by Terraform (`infra/scaleway/`) and contains the whole backend module, `go.mod` at its root. Scaleway compiles Go functions from source on deploy, with `adapters/scaleway/api.Handle` as the handler; there is no binary to build by hand (`infra/README.md`).
 
 The binary has five subcommands (`server <command>`, `serve` when none is given):
 

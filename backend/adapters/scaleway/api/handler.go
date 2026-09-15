@@ -63,18 +63,28 @@ func instance() (*app.App, error) {
 }
 
 // start reads the environment and wires the backend.
+//
+// The one Scaleway-specific step: the Firebase key comes from Secret Manager
+// rather than from FCM_SERVICE_ACCOUNT_JSON (secret.go). It shares the
+// start timeout with the database connection, and a failed lookup is
+// retried on a later call like any other start failure.
 func start() (*app.App, error) {
-	cfg, err := app.LoadConfig(os.Getenv)
+	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
+	defer cancel()
+
+	getenv, fetched, err := withFCMKey(ctx, os.Getenv, secretSource{baseURL: secretManagerURL})
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
-	defer cancel()
+	cfg, err := app.LoadConfig(getenv)
+	if err != nil {
+		return nil, err
+	}
 	a, err := app.New(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
-	log.Info("function started", "push_enabled", a.PushEnabled)
+	log.Info("function started", "push_enabled", a.PushEnabled, "fcm_key_from_secret_manager", fetched)
 	return a, nil
 }
 
