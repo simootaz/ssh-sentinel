@@ -32,17 +32,15 @@ Notification actions run in a background handler that calls `POST /verdict` dire
 
 ## Build
 
-Flutter stable (3.x), Android SDK, a device or emulator. From `mobile\` (PowerShell):
+Flutter stable (3.27 or newer), Android SDK, a device or emulator. The Android project is generated with the package name `com.example.ssh_sentinel`; `TESTING.md` explains how to change it and how to set up Firebase. From `mobile\` (PowerShell):
 
 ```powershell
-# first time only: generates the Flutter project around this layout, replace the org with your reverse domain
-flutter create --project-name ssh_sentinel --platforms android --org com.example .
 flutter pub get
 flutter run                     # debug build on the connected device
 flutter build apk --release     # release APK under build\app\outputs\flutter-apk\
 ```
 
-Firebase setup, once: create a Firebase project, add an Android app with the same package name, download `google-services.json` into `android\app\`. The FCM service account used by the backend comes from the same Firebase project and goes to the backend's secrets, never into this repo.
+Firebase setup, once: create a Firebase project, add an Android app with the same package name, download `google-services.json` into `android\app\`. Without that file the app builds and runs, but receives no push. The FCM service account used by the backend comes from the same Firebase project and goes to the backend's secrets, never into this repo. Step by step in `TESTING.md`.
 
 ## Test
 
@@ -53,7 +51,7 @@ flutter test
 
 Widget tests cover each screen against a fake API client; unit tests cover the contract v1 JSON models with the examples from `docs/architecture.md`.
 
-Manual checks on real phones (emulators are unreliable for push delivery):
+Manual checks on real phones (emulators are unreliable for push delivery), detailed in `TESTING.md`:
 
 1. App in foreground: request screen appears, countdown runs, each button ends the request. Always allow asks for a TTL.
 2. App in background or phone locked: notification with three action buttons, each one reaches the backend without opening the app.
