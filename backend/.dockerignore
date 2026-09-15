@@ -1,0 +1,5 @@
+# Kept out of the build context: local builds, secrets, function zips.
+bin/
+dist/
+.env*
+*.zip
