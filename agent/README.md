@@ -1,6 +1,6 @@
 # agent
 
-Go binary installed on every protected server. One static executable, no runtime dependencies.
+Go binary installed on every protected server. One static executable, no runtime dependencies, standard library only.
 
 Targets: Linux (Ubuntu, Debian, AlmaLinux, Rocky, RHEL) with enforcement, Windows notify-only. macOS is best effort, later; nothing here depends on it.
 
@@ -21,11 +21,16 @@ Targets: Linux (Ubuntu, Debian, AlmaLinux, Rocky, RHEL) with enforcement, Window
 |---|---|
 | `cmd/ssh-sentinel/` | `main` package, subcommand dispatch (`check`, `sync`, `watch`, `version`) |
 | `internal/check/` | PAM flow: break-glass, backend call, cache fallback, exit code, sudo command lookup |
-| `internal/watch/` | Windows event-log watcher |
+| `internal/watch/` | Windows event-log watcher: wevtutil polling, sshd message parser, notify-mode reporting |
 | `internal/whitelist/` | break-glass file and synced whitelist cache, with expiry |
-| `internal/client/` | HTTP client for the backend (bearer token, timeouts) |
-| `internal/config/` | config file loading |
-| `scripts/` | `install.sh`, PAM templates per distro family in `scripts/pam/`, fail2ban filter and jail example in `scripts/fail2ban/` |
+| `internal/client/` | HTTP client for the backend (bearer token, timeouts, rejected vs unreachable errors) |
+| `internal/config/` | config file loading and validation |
+| `internal/auditlog/` | the decision line; syslog on Linux, Application event log on Windows |
+| `scripts/install.sh` | Linux installer and uninstaller |
+| `scripts/install_test.sh` | checks the PAM insertion against Debian and RHEL layouts in a temp dir |
+| `scripts/pam/` | `sshd.ssh-sentinel`, `sudo.ssh-sentinel`: reference copies of the two PAM lines |
+| `scripts/fail2ban/` | `ssh-sentinel.conf` (filter), `ssh-sentinel.local.example` (jail) |
+| `TESTING.md` | the VM test runbook |
 
 Files on a server (Linux):
 
@@ -33,13 +38,39 @@ Files on a server (Linux):
 |---|---|---|
 | `/usr/local/bin/ssh-sentinel` | the binary | `root 0755` |
 | `/etc/ssh-sentinel/config.json` | backend base URL, server token, mode, timeouts | `root 0600` |
-| `/etc/ssh-sentinel/breakglass` | break-glass whitelist, one username per line, hand-edited only, never synced | `root 0600` |
+| `/etc/ssh-sentinel/breakglass` | break-glass whitelist, one username per line, `#` comments, hand-edited only, never synced. Ignored unless owned by root and writable by root only | `root 0600` |
 | `/var/lib/ssh-sentinel/whitelist.json` | cache of the backend whitelist for this server, with expiry, written by `sync` | `root 0600` |
 | `/etc/fail2ban/filter.d/ssh-sentinel.conf` | fail2ban filter, copied by the installer when fail2ban is present | `root 0644` |
 
-JSON for the config because Go parses it with the standard library, so no extra dependency.
+## Configuration
 
-PAM lines written by the installer, after the distro's existing `account` lines:
+`/etc/ssh-sentinel/config.json`, JSON because Go parses it with the standard library. Unknown keys are rejected, so a typo fails at install time instead of being ignored.
+
+```json
+{
+  "backend_url": "https://api.example.com",
+  "server_token": "the token printed by the enrollment script",
+  "mode": "enforce",
+  "timeout_seconds": 30,
+  "hostname": "",
+  "allow_http": false,
+  "watch_poll_seconds": 2
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `backend_url` | base URL of the backend, https, no trailing slash. Required |
+| `server_token` | this server's bearer token. Required |
+| `mode` | `enforce` (default) or `notify` |
+| `timeout_seconds` | whole budget of one access request, connection included, 1 to 120. Default 30 |
+| `hostname` | name reported to the backend; empty means the OS hostname |
+| `allow_http` | accept an `http://` backend URL. Lab use only |
+| `watch_poll_seconds` | Windows watcher poll interval. Default 2 |
+
+`SSH_SENTINEL_CONFIG=/path/config.json` overrides the config location for manual runs. The break-glass file and the cache stay at their fixed paths, so a missing or broken config never disables them; the backend then counts as unreachable.
+
+PAM lines written by the installer, each preceded by the marker `# ssh-sentinel (managed by install.sh)` and inserted before the first include of the account stack (`@include common-account` on Debian and Ubuntu, `account include password-auth` or `system-auth` on the RHEL family). Before, not after: the RHEL includes contain `account sufficient pam_localuser.so`, and a sufficient module that succeeds ends the stack, so a line placed after the include would be skipped for local users. The installer backs each file up to `<file>.ssh-sentinel.bak` first.
 
 ```
 # /etc/pam.d/sshd
@@ -69,6 +100,27 @@ ssh-sentinel[2140]: decision=allow context=sudo user=deploy rhost=- host=web-01 
 
 The fail2ban filter matches `decision=deny` lines that carry an `rhost`, so a jail can ban an IP locally after a few denials on that server. This is a local layer; the backend's auto-block is the fleet-wide one. Windows writes the same line to the Application event log.
 
+## Install
+
+On the server, as root, with the Linux binary and the `scripts/` folder copied next to each other:
+
+```bash
+sudo ./scripts/install.sh --backend-url https://api.example.com --token "$TOKEN" --mode notify
+```
+
+What it does, in order:
+
+- copies the binary to `/usr/local/bin` and runs `ssh-sentinel version` before touching PAM,
+- writes `config.json` and an empty break-glass file under `/etc/ssh-sentinel`,
+- inserts the two PAM lines, with a backup of each file,
+- installs and starts the sync timer (every 5 minutes) and runs a first sync,
+- copies the fail2ban filter and the jail example when fail2ban is present,
+- warns when SELinux is enforcing.
+
+Re-running is safe. `--dry-run` prints every step instead of doing it. `--uninstall` removes the PAM lines, the timer and the binary; add `--purge` to remove the config, the break-glass file and the cache too. The token can be passed as `SSH_SENTINEL_TOKEN` to keep it out of the shell history.
+
+Start in notify mode, watch `journalctl -t ssh-sentinel -f` and the history for a while, then set `"mode": "enforce"` in `config.json`. No restart needed: the agent reads the config on every call.
+
 ## Build
 
 Go 1.22 or newer. From `agent\` on the Windows dev machine (PowerShell):
@@ -88,18 +140,38 @@ $env:GOOS = "windows"; $env:GOARCH = "amd64"; go build -trimpath -ldflags "-s -w
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
 ```
 
-A darwin/arm64 build is one more line and worth keeping in the release script, but nothing is tested on macOS.
+Add `-X main.version=1.0.0` to the `-ldflags` value to stamp a version (`ssh-sentinel version` prints it). A darwin/arm64 build is one more line and worth keeping in the release script, but nothing is tested on macOS.
+
+## Windows
+
+Build `ssh-sentinel-windows-amd64.exe`, copy it to `C:\Program Files\ssh-sentinel\ssh-sentinel.exe` and write `C:\ProgramData\ssh-sentinel\config.json` with the same keys as on Linux (`mode` is ignored: Windows always reports in notify mode). Then, in an administrator PowerShell:
+
+```powershell
+# register the event source once, so the Application log renders the lines cleanly
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\ssh-sentinel" /v EventMessageFile /t REG_EXPAND_SZ /d "%SystemRoot%\System32\EventCreate.exe" /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\ssh-sentinel" /v TypesSupported /t REG_DWORD /d 7 /f
+
+# test: log in over SSH, then report the logins of the last five minutes
+& "C:\Program Files\ssh-sentinel\ssh-sentinel.exe" watch --once
+
+# run at boot as SYSTEM
+schtasks /Create /TN ssh-sentinel /SC ONSTART /RU SYSTEM /TR "\"C:\Program Files\ssh-sentinel\ssh-sentinel.exe\" watch" /F
+schtasks /Run /TN ssh-sentinel
+```
+
+The watcher polls the `OpenSSH/Operational` channel with `wevtutil` every `watch_poll_seconds` and sends one notify-mode request per accepted login. Decisions land in the Application log under the source `ssh-sentinel`, event id 100. `--channel` points it at another channel if OpenSSH logs elsewhere.
 
 ## Test
 
 ```powershell
 go vet ./...
 go test ./...
+bash scripts/install_test.sh
 ```
 
-Unit tests cover the decision logic against a fake backend (Go's `httptest` package) and a fake clock for cache expiry, so they run on Windows without PAM.
+Unit tests cover the decision table row by row against a fake backend (Go's `httptest` package) and a fake clock for cache expiry, the exact request bodies of the contract, the log line, the config validation and the event-log parser, so they run on Windows without PAM. `install_test.sh` runs the PAM insertion against Debian and RHEL layouts in a temp directory.
 
-End-to-end tests run on a throwaway VM only (Multipass, VirtualBox or a cloud instance). Never on a production server.
+End-to-end tests run on a throwaway VM only (Multipass, VirtualBox or a cloud instance). Never on a production server. The full runbook is `TESTING.md`; in short:
 
 1. Copy the Linux binary and `scripts/install.sh` to the VM, run the installer in notify mode first.
 2. Keep a root shell open on the VM before touching PAM. A broken PAM config locks you out of SSH; the open shell, or the console, is the way back.
@@ -114,5 +186,6 @@ End-to-end tests run on a throwaway VM only (Multipass, VirtualBox or a cloud in
 - RHEL family with SELinux enforcing: check `ausearch -m avc -ts recent` after the first test. The PAM contexts of sshd and sudo may need a small policy addition to allow the outbound HTTPS call.
 - sshd `LoginGraceTime` (default 120 s) covers the 30 s wait. `MaxStartups` counts connections waiting in PAM.
 - For sudo, `pam_exec` gives no remote host and no command. The agent reads the command line of its parent sudo process from `/proc` as a best effort and sends it when found; `source_ip` is sent as null.
+- In notify mode the backend call is capped at 10 s, so a server in rollout never waits the full budget for a backend that is down.
 - Cache expiry uses the server clock. Keep NTP running.
 - macOS: Apple does not ship `pam_exec`. FreeBSD has one for OpenPAM, which macOS uses, so a port is the likely route when the time comes. Not scheduled.
