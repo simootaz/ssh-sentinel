@@ -1,11 +1,13 @@
-// Package handler builds the one http.Handler that serves CONTRACT v1
-// (docs/architecture.md, section 5). It knows nothing about the provider:
-// cmd/server and adapters/scaleway/api both call New and serve the result.
+// Package handler builds the one http.Handler that serves CONTRACT v1 and
+// the v1.1 additions (docs/architecture.md, section 5), the dashboard
+// included. It knows nothing about the provider: cmd/server and
+// adapters/scaleway/api both call New and serve the result.
 package handler
 
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"time"
@@ -51,6 +53,10 @@ type Deps struct {
 	Rules  *rules.Engine
 	Config Config
 	Log    *slog.Logger
+
+	// Dashboard is the file tree served at /dashboard. Nil means the
+	// dashboard embedded in the web module; tests may pass their own.
+	Dashboard fs.FS
 }
 
 // Handler holds the dependencies; one method per route.
@@ -63,9 +69,12 @@ type Handler struct {
 	rules *rules.Engine
 	cfg   Config
 	log   *slog.Logger
+
+	dashboard map[string]staticFile // path inside the web folder -> file
 }
 
-// New wires every route of the contract on a Go 1.22 ServeMux.
+// New wires every route of the contract on a Go 1.22 ServeMux. The
+// dashboard files are read from the embedded tree here, once.
 func New(d Deps) http.Handler {
 	h := &Handler{store: d.Store, push: d.Push, geo: d.Geo, clock: d.Clock, auth: d.Auth, rules: d.Rules, cfg: d.Config, log: d.Log}
 	if h.clock == nil {
@@ -88,8 +97,18 @@ func New(d Deps) http.Handler {
 		h.cfg.PushTimeout = def.PushTimeout
 	}
 
+	// An embedded tree cannot fail to read; a tree passed by a test can, and
+	// a dashboard that is not there is a 404 on every file, not a crash.
+	files, err := loadDashboard(d.Dashboard)
+	if err != nil {
+		h.log.Error("dashboard: cannot read the embedded files, /dashboard answers 404", "err", err)
+		files = map[string]staticFile{}
+	}
+	h.dashboard = files
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.health)
+	h.registerDashboard(mux)
 
 	mux.HandleFunc("POST /access-request", h.requireServer(h.accessRequest))
 	mux.HandleFunc("POST /verdict", h.requireAdmin(h.verdict))

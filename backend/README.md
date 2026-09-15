@@ -16,6 +16,7 @@ Implements CONTRACT v1 (`docs/architecture.md`, section 5, frozen):
 | blocked-ips | `GET /blocked-ips`, `DELETE /blocked-ips/{id}` | app |
 | geo-rules | `GET /geo-rules`, `POST /geo-rules`, `DELETE /geo-rules/{id}` | app |
 | health | `GET /healthz` | operator, no auth |
+| dashboard (v1.1) | `GET /dashboard`, `GET /dashboard/{file}` | browser, no auth on the files |
 
 On `POST /access-request` the backend authenticates the server, looks up the geo of the source IP, applies the rules in order (blocked IP, country blocklist, whitelist with expiry, notify mode) and only then stores a pending request, pushes it to every registered phone and waits for the first verdict.
 
@@ -41,7 +42,8 @@ Things to know:
 | `internal/model/` | request and response types shared by the handlers |
 | `adapters/scaleway/api/` | Scaleway Serverless Functions adapter: exports `Handle(w, r)` and forwards to the core handler. One function serves every route, so clients get one base URL |
 | `migrations/` | numbered SQL files applied in order (`001_init.sql`, ...) |
-| `Dockerfile` | multi-stage build, static binary, minimal runtime image |
+| `Dockerfile` | multi-stage build, static binary, minimal runtime image. Build context is the repository root (below) |
+| `../web/` | the dashboard, a Go module of its own that embeds its `index.html`, stylesheet and JavaScript modules. `go.mod` here requires it with `replace => ../web`; `internal/handler/dashboard.go` serves it at `/dashboard` with a strict Content-Security-Policy. Details in `web/README.md` |
 
 Adding a provider is a new folder under `adapters/`. Nothing under `internal/` changes.
 
@@ -75,10 +77,12 @@ go mod tidy
 go vet ./...
 go build ./...
 go build -o bin\server.exe .\cmd\server
-docker build -t ssh-sentinel-backend .
+docker build -f Dockerfile -t ssh-sentinel-backend ..
 ```
 
-The Scaleway zip is built by Terraform (`infra/scaleway/`) and contains the whole backend module, `go.mod` at its root. Scaleway compiles Go functions from source on deploy, with `adapters/scaleway/api.Handle` as the handler; there is no binary to build by hand (`infra/README.md`).
+The Docker build context is the repository root (`..` above, or `.` with `-f backend/Dockerfile` from the root): the binary embeds the dashboard from `web/`, a module next to this one, and the root `.dockerignore` keeps everything else out of the context.
+
+The Scaleway zip is built by Terraform (`infra/scaleway/`) and contains the whole backend module, `go.mod` at its root. Scaleway compiles Go functions from source on deploy, with `adapters/scaleway/api/Handle` as the handler; there is no binary to build by hand (`infra/README.md`). Because the zip has this module at its root, `../web` is outside it: run `go mod vendor` in `backend\` before `terraform apply`, so that the dashboard travels inside `vendor/` (gitignored, kept in the zip). Go builds in vendor mode without looking at `../web`.
 
 The binary has five subcommands (`server <command>`, `serve` when none is given):
 

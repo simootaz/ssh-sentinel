@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http/httptest"
 	"sync"
@@ -116,8 +117,9 @@ type env struct {
 
 // envOptions tunes the handler and rules for one test.
 type envOptions struct {
-	Config Config
-	Rules  rules.Config
+	Config    Config
+	Rules     rules.Config
+	Dashboard fs.FS // nil: the embedded dashboard
 }
 
 // newEnv builds the harness with default timing and rules.
@@ -138,14 +140,15 @@ func newEnvWith(t *testing.T, o envOptions) *env {
 		rcfg = rules.DefaultConfig()
 	}
 	h := New(Deps{
-		Store:  e.store,
-		Push:   e.push,
-		Geo:    e.geo,
-		Clock:  e.clock,
-		Auth:   auth.New(e.store, testAdminToken),
-		Rules:  rules.New(e.store, e.clock, rcfg),
-		Config: o.Config,
-		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Store:     e.store,
+		Push:      e.push,
+		Geo:       e.geo,
+		Clock:     e.clock,
+		Auth:      auth.New(e.store, testAdminToken),
+		Rules:     rules.New(e.store, e.clock, rcfg),
+		Config:    o.Config,
+		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Dashboard: o.Dashboard,
 	})
 	e.srv = httptest.NewServer(h)
 	t.Cleanup(e.srv.Close)

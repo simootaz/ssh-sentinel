@@ -2,7 +2,16 @@ module github.com/simootaz/ssh-sentinel/backend
 
 go 1.22
 
-require github.com/jackc/pgx/v5 v5.7.4
+require (
+	github.com/jackc/pgx/v5 v5.7.4
+	github.com/simootaz/ssh-sentinel/web v0.0.0
+)
+
+// The dashboard is a module of its own next to this one (web/embed.go says
+// why). It is never published: the version is a placeholder and the files
+// come from the repository. Docker builds and the Scaleway zip must carry
+// web/ along, see README.md.
+replace github.com/simootaz/ssh-sentinel/web => ../web
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
