@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>ssh-sentinel</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#pending">ssh-sentinel</a>
+    <nav id="nav" hidden>
+      <a href="#pending" data-view="pending">Pending <span id="pending-count" class="badge badge-pending" hidden>0</span></a>
+      <a href="#history" data-view="history">History</a>
+      <a href="#whitelist" data-view="whitelist">Whitelist</a>
+      <a href="#blocked" data-view="blocked">Blocked IPs</a>
+      <a href="#georules" data-view="georules">Geo rules</a>
+      <a href="#admins" data-view="admins">Admins</a>
+      <a href="#servers" data-view="servers">Servers</a>
+    </nav>
+    <div id="session" class="session" hidden>
+      <span id="poll-state" class="error small"></span>
+      <button id="logout" type="button">Log out</button>
+    </div>
+  </header>
+  <main id="main">
+    <noscript><p class="error">The dashboard needs JavaScript.</p></noscript>
+  </main>
+</body>
+</html>
