@@ -1,0 +1,15 @@
+# Reverse proxy with automatic TLS in front of the backend. Used only with the
+# tls profile: docker compose --profile tls up -d
+#
+# DOMAIN comes from .env and must resolve to this machine. Ports 80 and 443
+# must be reachable from the internet for the certificate to be issued and
+# renewed. With DOMAIN=localhost Caddy issues a self-signed certificate.
+
+{$DOMAIN} {
+	reverse_proxy backend:8080
+
+	log {
+		output stdout
+		format json
+	}
+}

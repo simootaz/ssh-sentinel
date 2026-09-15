@@ -1,0 +1,86 @@
+# ssh-sentinel backend on one machine: the API container, PostgreSQL 16 and an
+# optional Caddy reverse proxy that terminates TLS with automatic certificates.
+#
+#   docker compose up -d                  backend + db, plain HTTP on 127.0.0.1:8080
+#   docker compose --profile tls up -d    same, plus caddy on 80/443 for DOMAIN
+#
+# Every value comes from .env (copy .env.example). Agents and phones need
+# HTTPS: enable the tls profile, or put your own proxy in front of port 8080.
+
+name: ssh-sentinel
+
+services:
+  backend:
+    build:
+      context: ../../backend
+    image: ${BACKEND_IMAGE:-ssh-sentinel-backend:local}
+    restart: unless-stopped
+    environment:
+      # Bundled db by default. Set DATABASE_URL in .env to use another PostgreSQL 14+.
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sentinel}?sslmode=disable}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:?set FCM_PROJECT_ID in .env}
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:?set FCM_SERVICE_ACCOUNT_JSON in .env}
+      LISTEN_ADDR: ":8080"
+      VERDICT_WAIT_SECONDS: ${VERDICT_WAIT_SECONDS:-25}
+      AUTOBLOCK_THRESHOLD: ${AUTOBLOCK_THRESHOLD:-3}
+      AUTOBLOCK_WINDOW_SECONDS: ${AUTOBLOCK_WINDOW_SECONDS:-3600}
+      AUTOBLOCK_DURATION_SECONDS: ${AUTOBLOCK_DURATION_SECONDS:-0}
+      GEO_LOOKUP_URL: ${GEO_LOOKUP_URL:-}
+    ports:
+      # Plain HTTP, loopback only. Caddy (or your proxy) reaches it on the compose network.
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sentinel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinel}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # For psql and backups from the host only.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2
+    profiles: ["tls"]
+    restart: unless-stopped
+    environment:
+      # Public DNS name of this machine. "localhost" gives a self-signed certificate for local tests.
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

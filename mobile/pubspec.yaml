@@ -1,0 +1,38 @@
+name: ssh_sentinel
+description: "Admin phone app for ssh-sentinel: approve or deny SSH logins and sudo from a push notification."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Push delivery. FCM data-only messages carry the request; the app builds
+  # the notification itself.
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.0
+
+  # Notification with the three action buttons, handled in a background isolate
+  # when the app is not open.
+  flutter_local_notifications: ^19.5.0
+
+  # Backend base URL, admin token and device id, in Android's encrypted storage.
+  flutter_secure_storage: ^9.2.4
+
+  # Backend API client (contract v1).
+  http: ^1.6.0
+
+  # Default device label ("Pixel 8") for POST /devices.
+  device_info_plus: ^11.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,7 @@
+# Copy to backend.hcl and set the bucket you created by hand (infra/README.md).
+# One bucket serves dev and prod; the state key differs per environment.
+bucket = "my-org-ssh-sentinel-tfstate"
+region = "fr-par"
+endpoints = {
+  s3 = "https://s3.fr-par.scw.cloud"
+}

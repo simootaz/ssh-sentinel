@@ -1,0 +1,33 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No secret in this file:
+# admin_token and fcm_service_account_json come from TF_VAR_ variables, see infra/README.md.
+
+# Scaleway project for dev, created by hand in the console (Project Dashboard).
+project_id = "11111111-1111-1111-1111-111111111111"
+region     = "fr-par"
+
+name_prefix = "ssh-sentinel-dev"
+tags        = ["ssh-sentinel", "dev"]
+
+# Firebase console > Project settings > General > Project ID
+fcm_project_id = "my-firebase-project"
+
+# Function. go124 or newer; at least the Go version in backend/go.mod.
+function_runtime      = "go124"
+function_timeout      = 60
+function_memory_limit = 256
+function_min_scale    = 0
+function_max_scale    = 5
+
+# Database. min_cpu 0 sleeps when idle (cheap, slow first query).
+db_min_cpu = 0
+db_max_cpu = 2
+
+# Backend rules, defaults from backend/README.md
+verdict_wait_seconds       = 25
+autoblock_threshold        = 3
+autoblock_window_seconds   = 3600
+autoblock_duration_seconds = 0
+geo_lookup_url             = ""
+
+# Run backend/migrations from this machine during apply (needs Go installed).
+run_migrations = true
