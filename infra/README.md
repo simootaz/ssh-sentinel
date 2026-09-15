@@ -20,7 +20,7 @@ Layout:
 | `modules/secrets/` | Secret Manager entries `database-url`, `admin-token` and `fcm-service-account` under `/ssh-sentinel/<env>/`, and the policy letting the backend read secret data. Values supplied at apply time, never stored in the repo |
 | `environments/dev/`, `environments/prod/` | root modules, one state each in an Object Storage bucket (S3-compatible backend), one Scaleway project each, own sizing. Also the migration step |
 
-Scaleway builds Go functions from source: the zip is the whole backend Go module (`go.mod` at its root), the handler is `adapters/scaleway/api/Handle`, and the platform compiles it on deploy. There is no binary to build by hand. The Go runtime (`function_runtime`, default `go124`) must be at least the `go` version named in `backend/go.mod`; `scw function runtime list` shows what is available.
+Scaleway builds Go functions from source: the zip is the whole backend Go module (`go.mod` at its root), the handler is `adapters/scaleway/api/Handle`, and the platform compiles it on deploy. There is no binary to build by hand. One step before `terraform apply`: `go mod vendor` in `backend\`. The dashboard (`web/`, a sibling module the backend embeds) is outside the zip otherwise; vendored, it travels in `vendor/`, which the zip keeps and git ignores. The Go runtime (`function_runtime`, default `go124`) must be at least the `go` version named in `backend/go.mod`; `scw function runtime list` shows what is available.
 
 ### Created by hand, created by Terraform
 
@@ -143,7 +143,7 @@ Files:
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | services `backend` (image built from `backend/Dockerfile`, or `BACKEND_IMAGE` from a registry), `db` (PostgreSQL 16, named volume `pgdata`, healthcheck), `caddy` (profile `tls`, automatic certificates, ports 80 and 443) |
+| `docker-compose.yml` | services `backend` (image built from `backend/Dockerfile` with the repository root as context, since the binary embeds the dashboard from `web/`; or `BACKEND_IMAGE` from a registry), `db` (PostgreSQL 16, named volume `pgdata`, healthcheck), `caddy` (profile `tls`, automatic certificates, ports 80 and 443) |
 | `.env.example` | every variable the stack reads, with comments; copy to `.env`, which is gitignored |
 | `Caddyfile` | reverse proxy to `backend:8080` for `DOMAIN`, used only when the `tls` profile is on |
 

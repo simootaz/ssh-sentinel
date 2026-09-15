@@ -1,0 +1,12 @@
+# Build context of backend/Dockerfile is the repository root (the image embeds
+# web/). Only the two Go modules go in; everything else stays out.
+*
+!backend/
+!web/
+backend/bin/
+backend/dist/
+backend/vendor/
+backend/.env*
+backend/**/*.zip
+web/test/
+web/node_modules/

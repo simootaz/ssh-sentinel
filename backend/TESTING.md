@@ -86,7 +86,7 @@ Push disabled: with both FCM variables empty the backend stores, waits on and an
 To check the image rather than the source:
 
 ```powershell
-docker build -t ssh-sentinel-backend .
+docker build -f Dockerfile -t ssh-sentinel-backend ..    # context: the repository root, the image embeds web/
 docker run --rm -d --name ssh-sentinel-api -p 8080:8080 `
   -e DATABASE_URL="postgres://postgres:dev@host.docker.internal:5432/postgres?sslmode=disable" `
   -e ADMIN_TOKEN="dev-admin-token" ssh-sentinel-backend

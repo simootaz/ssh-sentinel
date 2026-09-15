@@ -12,7 +12,9 @@ name: ssh-sentinel
 services:
   backend:
     build:
-      context: ../../backend
+      # Repository root: the image embeds the dashboard from web/ next to backend/.
+      context: ../..
+      dockerfile: backend/Dockerfile
     image: ${BACKEND_IMAGE:-ssh-sentinel-backend:local}
     restart: unless-stopped
     environment:
